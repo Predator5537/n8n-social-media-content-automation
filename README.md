@@ -1,4 +1,4 @@
-# 🚀 Carematix — n8n Social Media Content Automation
+# 🚀 N8N Social Media Content Automation
 
 > A lightweight, AI-powered content operating system built for Carematix that enables a single non-technical operator to generate, review, approve, and publish social media content across **LinkedIn**, **Facebook**, and **Instagram** — fully automated, on-brand, and audit-ready.
 
