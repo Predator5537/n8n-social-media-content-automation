@@ -1,0 +1,711 @@
+{
+  "name": "Carematix \u2014 Workflow B \u2014 Review & Approval Router",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 24,
+              "triggerAtHour": 9,
+              "triggerAtMinute": 0
+            }
+          ]
+        }
+      },
+      "id": "wfb-001",
+      "name": "Schedule \u2014 Every 30 Min",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "read",
+        "documentId": {
+          "__rl": true,
+          "value": "1djoz4p-YyJ4Pu43-f9dUjWu4VhY6BCt-uUVMVVdK620",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Content Queue",
+          "mode": "name"
+        },
+        "options": {}
+      },
+      "id": "wfb-002",
+      "name": "Read Content Queue",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        260,
+        400
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "google_sheets_cred",
+          "name": "Google Sheets OAuth2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst normalize = s => (s||'').toString().trim().toUpperCase().replace(/[\\s_-]/g,'');\nconst rows = $input.all().map(r => r.json);\n\nconst draftReady = rows.filter(r => normalize(r['Status']) === 'DRAFTREADY');\nconst approved   = rows.filter(r => normalize(r['Status']) === 'APPROVED');\nconst rejected   = rows.filter(r => normalize(r['Status']) === 'REJECTED');\n\nreturn [{json: {\n  draftReady, approved, rejected,\n  hasDraftReady: draftReady.length > 0,\n  hasApproved  : approved.length   > 0,\n  hasRejected  : rejected.length   > 0\n}}];\n",
+        "mode": "runOnceForAllItems"
+      },
+      "id": "wfb-003",
+      "name": "Classify Rows",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        520,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "id": "d1",
+              "leftValue": "={{ $json.hasDraftReady }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "wfb-004",
+      "name": "IF \u2014 Draft Ready?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        780,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const rows = $input.first().json.draftReady;\nconst sheetUrl = 'https://docs.google.com/spreadsheets/d/1djoz4p-YyJ4Pu43-f9dUjWu4VhY6BCt-uUVMVVdK620/edit?gid=141580119';\n\nconst esc = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');\nconst nl2br = s => esc(s).replace(/\\n/g,'<br>');\n\nlet cardsHtml = '';\nfor (const row of rows) {\n  cardsHtml += `\n    <div style=\"border:1px solid #e0e0e0;border-radius:10px;padding:22px;margin-bottom:24px;background:#fff;\">\n      <h3 style=\"margin:0 0 4px 0;font-size:15px;color:#1d1c84;\">${esc(row['Row ID'])} &mdash; ${esc(row['Product Education']||row['Theme']||'')}</h3>\n      <p style=\"margin:0 0 16px 0;font-size:12px;color:#888;\">\n        <strong>Pillar:</strong> ${esc(row['Content Pillar'])} &nbsp;&bull;&nbsp;\n        <strong>Audience:</strong> ${esc(row['Audience'])} &nbsp;&bull;&nbsp;\n        <strong>Publish:</strong> ${esc(row['Publish Date'])}\n      </p>\n      <div style=\"background:#f0f4ff;border-left:4px solid #0077b5;padding:12px 14px;margin-bottom:10px;border-radius:0 6px 6px 0;\">\n        <div style=\"font-weight:bold;color:#0077b5;font-size:12px;margin-bottom:6px;\">&#128188; LINKEDIN</div>\n        <div style=\"font-size:13px;line-height:1.7;color:#1a1a1a;\">${nl2br(row['LinkedIn Draft']||'(not generated)')}</div>\n      </div>\n      <div style=\"background:#f0f4ff;border-left:4px solid #1877f2;padding:12px 14px;margin-bottom:10px;border-radius:0 6px 6px 0;\">\n        <div style=\"font-weight:bold;color:#1877f2;font-size:12px;margin-bottom:6px;\">&#128216; FACEBOOK</div>\n        <div style=\"font-size:13px;line-height:1.7;color:#1a1a1a;\">${nl2br(row['Facebook Draft']||'(not generated)')}</div>\n      </div>\n      <div style=\"background:#fff0f5;border-left:4px solid #e1306c;padding:12px 14px;margin-bottom:10px;border-radius:0 6px 6px 0;\">\n        <div style=\"font-weight:bold;color:#e1306c;font-size:12px;margin-bottom:6px;\">&#128248; INSTAGRAM</div>\n        <div style=\"font-size:13px;line-height:1.7;color:#1a1a1a;\">${nl2br(row['Instagram Caption']||'(not generated)')}</div>\n      </div>\n      <div style=\"background:#fffbea;border:1px solid #f5d040;border-radius:6px;padding:10px 14px;margin-bottom:10px;font-size:12px;color:#555;\">\n        <strong>&#127912; Image Brief:</strong> ${esc(row['Image Brief']||'(none)')}<br>\n        <strong>&#128279; CTA:</strong> ${esc(row['CTA']||'(none)')}\n      </div>\n      <div style=\"background:#f8f8f8;border-radius:6px;padding:10px 14px;font-size:12px;color:#444;line-height:1.9;\">\n        <strong>Review actions:</strong><br>\n        &#9989; <strong>Approve:</strong> Set Status = <code style=\"background:#e6ffe6;padding:1px 5px;border-radius:3px;\">APPROVED</code> &mdash; fill <em>Reviewer</em> + <em>Approval Date</em><br>\n        &#10060; <strong>Reject:</strong> Set Status = <code style=\"background:#ffe6e6;padding:1px 5px;border-radius:3px;\">REJECTED</code> &mdash; fill <em>Rejection Reason</em>\n      </div>\n    </div>`;\n}\n\nconst html = `<!DOCTYPE html><html><body style=\"font-family:Arial,Helvetica,sans-serif;background:#f4f4f7;margin:0;padding:24px;\">\n  <div style=\"max-width:680px;margin:0 auto;\">\n    <div style=\"background:#1d1c84;border-radius:10px 10px 0 0;padding:20px 28px;\">\n      <h2 style=\"color:#fff;margin:0;font-size:18px;\">&#128221; ${rows.length} Draft(s) Ready for Review</h2>\n      <p style=\"color:#b0b8ff;margin:4px 0 0 0;font-size:12px;\">Carematix Content Queue &mdash; Weekly Review</p>\n    </div>\n    <div style=\"background:#f9f9fb;padding:24px 28px;border:1px solid #e0e0e0;border-top:none;\">\n      <p style=\"color:#666;font-size:13px;margin:0 0 20px 0;\">\n        Review each draft below. Open the <a href=\"${sheetUrl}\" style=\"color:#1d1c84;font-weight:bold;\">Content Queue</a> to approve or reject.\n      </p>\n      ${cardsHtml}\n    </div>\n    <div style=\"background:#fff;border:1px solid #e0e0e0;border-top:none;border-radius:0 0 10px 10px;padding:14px 28px;text-align:center;font-size:12px;color:#999;\">\n      <a href=\"${sheetUrl}\" style=\"color:#1d1c84;font-weight:bold;\">&#8594; Open Content Queue</a> &nbsp;&nbsp;|&nbsp;&nbsp; Carematix Automation System\n    </div>\n  </div>\n</body></html>`;\n\nreturn [{json:{subject:`&#128221; ${rows.length} draft(s) awaiting review`, body:html}}];",
+        "mode": "runOnceForAllItems"
+      },
+      "id": "wfb-005",
+      "name": "Build Review Email",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1040,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "sendTo": "admin@carematix.com",
+        "subject": "={{ $json.subject }}",
+        "emailType": "html",
+        "message": "={{ $json.body }}",
+        "options": {}
+      },
+      "id": "wfb-006",
+      "name": "Email \u2014 Review Request",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        1300,
+        100
+      ],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "gmail_cred",
+          "name": "Gmail OAuth2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "id": "a1",
+              "leftValue": "={{ $json.hasApproved }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "wfb-007",
+      "name": "IF \u2014 Approved?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        780,
+        420
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst rows = $input.first().json.approved;\nconst valid   = rows.filter(r => r['Reviewer'] && r['Approval Date']);\nconst invalid = rows.filter(r => !(r['Reviewer'] && r['Approval Date']));\nreturn [{json:{valid, invalid, hasInvalid: invalid.length > 0}}];\n",
+        "mode": "runOnceForAllItems"
+      },
+      "id": "wfb-008",
+      "name": "Validate Approval Fields",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1040,
+        380
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "id": "inv1",
+              "leftValue": "={{ $json.hasInvalid }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "wfb-009",
+      "name": "IF \u2014 Incomplete Approval?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1300,
+        380
+      ]
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $vars.OPERATOR_EMAIL }}",
+        "subject": "=\u26a0\ufe0f {{ $json.invalid.length }} row(s) APPROVED but missing Reviewer or Approval Date",
+        "message": "=Hi,\n\nThe following rows were set to APPROVED but are missing required fields (Reviewer and/or Approval Date). Please fill them in so the workflow can schedule these posts.\n\n{{ $json.invalid.map(r => '\u2022 ' + r['Row ID'] + ' \u2014 ' + (r['Product Education']||r['Theme'])).join('\\n') }}\n\n\ud83d\udc49 https://docs.google.com/spreadsheets/d/1djoz4p-YyJ4Pu43-f9dUjWu4VhY6BCt-uUVMVVdK620/edit\n\n\u2014 Carematix Automation",
+        "options": {}
+      },
+      "id": "wfb-010",
+      "name": "Email \u2014 Incomplete Approval Alert",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        1560,
+        260
+      ],
+      "credentials": {
+        "gmail_cred": {
+          "id": "gmail_cred",
+          "name": "Gmail OAuth2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "return $input.first().json.valid.map(r => ({json: r}));",
+        "mode": "runOnceForAllItems"
+      },
+      "id": "wfb-011",
+      "name": "Expand Valid Approved Rows",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1560,
+        500
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "1djoz4p-YyJ4Pu43-f9dUjWu4VhY6BCt-uUVMVVdK620",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Content Queue",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Row ID": "={{ $json['Row ID'] }}",
+            "Status": "SCHEDULED_MANUAL",
+            "Last Updated At": "={{ new Date().toISOString().split('T')[0] }}"
+          },
+          "matchingColumns": [
+            "Row ID"
+          ],
+          "schema": []
+        },
+        "options": {}
+      },
+      "id": "wfb-012",
+      "name": "Set \u2014 SCHEDULED_MANUAL",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        1820,
+        500
+      ],
+      "credentials": {
+        "google_sheets_cred": {
+          "id": "google_sheets_cred",
+          "name": "Google Sheets"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $vars.OPERATOR_EMAIL }}",
+        "subject": "=\u2705 {{ $('Expand Valid Approved Rows').all().length }} post(s) scheduled for manual publishing",
+        "message": "=Hi,\n\nThe following approved posts have been marked SCHEDULED_MANUAL and will appear in tomorrow's daily publishing checklist.\n\n{{ $('Expand Valid Approved Rows').all().map(r => '\u2022 ' + r.json['Row ID'] + ' \u2014 ' + (r.json['Product Education']||r.json['Theme']) + ' (Publish: ' + r.json['Publish Date'] + ')').join('\\n') }}\n\nYou will receive the posting checklist at 8:00 AM on the publish date.\n\n\u2014 Carematix Automation",
+        "options": {}
+      },
+      "id": "wfb-013",
+      "name": "Email \u2014 Scheduled Confirmation",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        2080,
+        500
+      ],
+      "credentials": {
+        "gmail_cred": {
+          "id": "gmail_cred",
+          "name": "Gmail OAuth2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "id": "r1",
+              "leftValue": "={{ $json.hasRejected }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "wfb-014",
+      "name": "IF \u2014 Rejected?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        780,
+        640
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "return $input.first().json.rejected.map(r => ({json: r}));",
+        "mode": "runOnceForAllItems"
+      },
+      "id": "wfb-015",
+      "name": "Expand Rejected Rows",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1040,
+        720
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "1djoz4p-YyJ4Pu43-f9dUjWu4VhY6BCt-uUVMVVdK620",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Content Queue",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Row ID": "={{ $json['Row ID'] }}",
+            "Status": "BRIEF_READY",
+            "LinkedIn Draft": "",
+            "Facebook Draft": "",
+            "Instagram Caption": "",
+            "Image Brief": "",
+            "CTA": "",
+            "Last Updated At": "={{ new Date().toISOString().split('T')[0] }}"
+          },
+          "matchingColumns": [
+            "Row ID"
+          ],
+          "schema": []
+        },
+        "options": {}
+      },
+      "id": "wfb-016",
+      "name": "Reset \u2014 BRIEF_READY + Clear Drafts",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        1300,
+        720
+      ],
+      "credentials": {
+        "google_sheets_cred": {
+          "id": "google_sheets_cred",
+          "name": "Google Sheets"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $vars.OPERATOR_EMAIL }}",
+        "subject": "=\ud83d\udd01 {{ $('Expand Rejected Rows').all().length }} rejected post(s) reset to BRIEF_READY",
+        "message": "=Hi,\n\nThe following rows were rejected and have been reset to BRIEF_READY. Their drafts have been cleared. Please update the content brief and the workflow will regenerate new drafts on the next Monday run.\n\n{{ $('Expand Rejected Rows').all().map(r => '\u2022 ' + r.json['Row ID'] + ' \u2014 Reason: ' + (r.json['Rejection Reason']||'Not specified')).join('\\n') }}\n\n\ud83d\udc49 https://docs.google.com/spreadsheets/d/1djoz4p-YyJ4Pu43-f9dUjWu4VhY6BCt-uUVMVVdK620/edit\n\n\u2014 Carematix Automation",
+        "options": {}
+      },
+      "id": "wfb-017",
+      "name": "Email \u2014 Rejection Notice",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        1560,
+        720
+      ],
+      "credentials": {
+        "gmail_cred": {
+          "id": "gmail_cred",
+          "name": "Gmail OAuth2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1djoz4p-YyJ4Pu43-f9dUjWu4VhY6BCt-uUVMVVdK620",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Run Log",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Run ID": "=WFB-{{ Date.now() }}",
+            "Workflow Name": "Workflow B \u2014 Review & Approval Router",
+            "Started At": "={{ $execution.startedAt }}",
+            "Finished At": "={{ new Date().toISOString() }}",
+            "Success Count": "={{ ($('Classify Rows').first().json.approved.length || 0) + ($('Classify Rows').first().json.rejected.length || 0) }}",
+            "Failure Count": "=0",
+            "Notes": "=DraftReady: {{ $('Classify Rows').first().json.draftReady.length }} | Approved: {{ $('Classify Rows').first().json.approved.length }} | Rejected: {{ $('Classify Rows').first().json.rejected.length }}"
+          },
+          "schema": []
+        },
+        "options": {}
+      },
+      "id": "wfb-018",
+      "name": "Write Run Log",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        2340,
+        400
+      ],
+      "credentials": {
+        "google_sheets_cred": {
+          "id": "google_sheets_cred",
+          "name": "Google Sheets OAuth2"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "id": "wfb-000",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [0, 200]
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Read Content Queue",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Schedule \u2014 Every 30 Min": {
+      "main": [
+        [
+          {
+            "node": "Read Content Queue",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Content Queue": {
+      "main": [
+        [
+          {
+            "node": "Classify Rows",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Classify Rows": {
+      "main": [
+        [
+          {
+            "node": "IF \u2014 Draft Ready?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "IF \u2014 Approved?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "IF \u2014 Rejected?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF \u2014 Draft Ready?": {
+      "main": [
+        [
+          {
+            "node": "Build Review Email",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Write Run Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Review Email": {
+      "main": [
+        [
+          {
+            "node": "Email \u2014 Review Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Email \u2014 Review Request": {
+      "main": [
+        [
+          {
+            "node": "Write Run Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF \u2014 Approved?": {
+      "main": [
+        [
+          {
+            "node": "Validate Approval Fields",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Write Run Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Approval Fields": {
+      "main": [
+        [
+          {
+            "node": "IF \u2014 Incomplete Approval?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF \u2014 Incomplete Approval?": {
+      "main": [
+        [
+          {
+            "node": "Email \u2014 Incomplete Approval Alert",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Expand Valid Approved Rows",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Email \u2014 Incomplete Approval Alert": {
+      "main": [
+        [
+          {
+            "node": "Write Run Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Expand Valid Approved Rows": {
+      "main": [
+        [
+          {
+            "node": "Set \u2014 SCHEDULED_MANUAL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set \u2014 SCHEDULED_MANUAL": {
+      "main": [
+        [
+          {
+            "node": "Email \u2014 Scheduled Confirmation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Email \u2014 Scheduled Confirmation": {
+      "main": [
+        [
+          {
+            "node": "Write Run Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF \u2014 Rejected?": {
+      "main": [
+        [
+          {
+            "node": "Expand Rejected Rows",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Write Run Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Expand Rejected Rows": {
+      "main": [
+        [
+          {
+            "node": "Reset \u2014 BRIEF_READY + Clear Drafts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Reset \u2014 BRIEF_READY + Clear Drafts": {
+      "main": [
+        [
+          {
+            "node": "Email \u2014 Rejection Notice",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Email \u2014 Rejection Notice": {
+      "main": [
+        [
+          {
+            "node": "Write Run Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [
+    {
+      "name": "carematix"
+    },
+    {
+      "name": "workflow-b"
+    }
+  ],
+  "pinData": {}
+}

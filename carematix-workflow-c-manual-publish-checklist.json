@@ -1,0 +1,353 @@
+{
+  "name": "Carematix \u2014 Workflow C \u2014 Manual Publishing Checklist",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 24,
+              "triggerAtHour": 8,
+              "triggerAtMinute": 0
+            }
+          ]
+        }
+      },
+      "id": "wfc-001",
+      "name": "Schedule \u2014 Daily 8AM",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "read",
+        "documentId": {
+          "__rl": true,
+          "value": "1djoz4p-YyJ4Pu43-f9dUjWu4VhY6BCt-uUVMVVdK620",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Content Queue",
+          "mode": "name"
+        },
+        "options": {}
+      },
+      "id": "wfc-002",
+      "name": "Read Content Queue",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        260,
+        400
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "google_sheets_cred",
+          "name": "Google Sheets OAuth2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst today = new Date().toISOString().split('T')[0];\nconst normalize = s => (s||'').toString().trim().toUpperCase().replace(/[\\s_-]/g,'');\nconst rows = $input.all().map(r => r.json);\nconst dueToday  = rows.filter(r => normalize(r['Status'])==='SCHEDULEDMANUAL' && r['Publish Date']===today);\nconst overdue   = rows.filter(r => normalize(r['Status'])==='SCHEDULEDMANUAL' && r['Publish Date']<today);\nconst missingUrl= rows.filter(r => normalize(r['Status'])==='POSTEDMANUAL' && !(r['LinkedIn URL']||r['Facebook URL']||r['Instagram URL']));\nreturn [{json:{today,dueToday,overdue,missingUrl,\n  hasDue:dueToday.length>0, hasOverdue:overdue.length>0, hasMissing:missingUrl.length>0}}];\n",
+        "mode": "runOnceForAllItems"
+      },
+      "id": "wfc-003",
+      "name": "Classify Due Rows",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        520,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "id": "d1",
+              "leftValue": "={{ $json.hasDue }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "wfc-004",
+      "name": "IF \u2014 Posts Due Today?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        780,
+        260
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const d = $input.first().json;\nconst sheetUrl='https://docs.google.com/spreadsheets/d/1djoz4p-YyJ4Pu43-f9dUjWu4VhY6BCt-uUVMVVdK620/edit?gid=141580119';\nconst esc = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');\nconst nl2br = s => esc(s).replace(/\\n/g,'<br>');\n\nlet cardsHtml = '';\nfor(const row of d.dueToday){\n  cardsHtml += `<div style=\"border:1px solid #e0e0e0;border-radius:10px;padding:20px;margin-bottom:24px;background:#fff;\">\n    <h3 style=\"margin:0 0 4px 0;font-size:15px;color:#1d1c84;\">${esc(row['Row ID'])} &mdash; ${esc(row['Product Education']||row['Theme']||'')}</h3>\n    <p style=\"margin:0 0 14px 0;font-size:12px;color:#888;\"><strong>Pillar:</strong> ${esc(row['Content Pillar'])} &nbsp;&bull;&nbsp; <strong>Audience:</strong> ${esc(row['Audience'])}</p>\n    <div style=\"background:#f0f4ff;border-left:4px solid #0077b5;padding:11px 14px;margin-bottom:9px;border-radius:0 6px 6px 0;\">\n      <div style=\"font-weight:bold;color:#0077b5;font-size:12px;margin-bottom:5px;\">&#128188; LINKEDIN</div>\n      <div style=\"font-size:13px;line-height:1.7;\">${nl2br(row['LinkedIn Draft']||'(none)')}</div>\n    </div>\n    <div style=\"background:#f0f4ff;border-left:4px solid #1877f2;padding:11px 14px;margin-bottom:9px;border-radius:0 6px 6px 0;\">\n      <div style=\"font-weight:bold;color:#1877f2;font-size:12px;margin-bottom:5px;\">&#128216; FACEBOOK</div>\n      <div style=\"font-size:13px;line-height:1.7;\">${nl2br(row['Facebook Draft']||'(none)')}</div>\n    </div>\n    <div style=\"background:#fff0f5;border-left:4px solid #e1306c;padding:11px 14px;margin-bottom:9px;border-radius:0 6px 6px 0;\">\n      <div style=\"font-weight:bold;color:#e1306c;font-size:12px;margin-bottom:5px;\">&#128248; INSTAGRAM</div>\n      <div style=\"font-size:13px;line-height:1.7;\">${nl2br(row['Instagram Caption']||'(none)')}</div>\n    </div>\n    <div style=\"background:#fffbea;border:1px solid #f5d040;border-radius:6px;padding:9px 14px;margin-bottom:9px;font-size:12px;color:#555;\">\n      <strong>&#127912; Image Brief:</strong> ${esc(row['Image Brief']||'(none)')}<br>\n      <strong>&#128279; CTA:</strong> ${esc(row['CTA']||'(none)')}\n    </div>\n    <div style=\"background:#f0f7f0;border-radius:6px;padding:10px 14px;font-size:12px;color:#333;line-height:2;\">\n      <strong>&#9989; Publishing checklist:</strong><br>\n      &#9744; Post on LinkedIn &rarr; paste live URL into <strong>LinkedIn URL</strong> column<br>\n      &#9744; Post on Facebook &rarr; paste live URL into <strong>Facebook URL</strong> column<br>\n      &#9744; Post on Instagram &rarr; paste live URL into <strong>Instagram URL</strong> column<br>\n      &#9744; Set <strong>Status = POSTED_MANUAL</strong><br>\n      &#9744; Fill <strong>Posted By</strong> + <strong>Last Updated At</strong>\n    </div>\n  </div>`;\n}\n\nlet overdueHtml = '';\nif(d.hasOverdue){\n  overdueHtml = `<div style=\"background:#fff5e6;border:1px solid #f5a623;border-radius:8px;padding:14px 18px;margin-bottom:16px;\">\n    <strong style=\"color:#c47000;\">&#9888;&#65039; Overdue (${d.overdue.length} row(s))</strong>\n    <ul style=\"margin:8px 0 0 0;padding-left:18px;font-size:13px;color:#555;\">\n      ${d.overdue.map(r=>`<li>${esc(r['Row ID'])} &mdash; ${esc(r['Product Education']||r['Theme']||'')} <span style=\"color:#c47000;\">(was due ${esc(r['Publish Date'])})</span></li>`).join('')}\n    </ul>\n  </div>`;\n}\n\nconst html = `<!DOCTYPE html><html><body style=\"font-family:Arial,Helvetica,sans-serif;background:#f4f4f7;margin:0;padding:24px;\">\n  <div style=\"max-width:680px;margin:0 auto;\">\n    <div style=\"background:#1d1c84;border-radius:10px 10px 0 0;padding:20px 28px;\">\n      <h2 style=\"color:#fff;margin:0;font-size:18px;\">&#128197; ${d.dueToday.length} Post(s) to Publish Today &mdash; ${d.today}</h2>\n      <p style=\"color:#b0b8ff;margin:4px 0 0 0;font-size:12px;\">Carematix Manual Publishing Checklist</p>\n    </div>\n    <div style=\"background:#f9f9fb;padding:24px 28px;border:1px solid #e0e0e0;border-top:none;\">\n      ${overdueHtml}\n      ${cardsHtml}\n    </div>\n    <div style=\"background:#fff;border:1px solid #e0e0e0;border-top:none;border-radius:0 0 10px 10px;padding:14px 28px;text-align:center;font-size:12px;color:#999;\">\n      <a href=\"${sheetUrl}\" style=\"color:#1d1c84;font-weight:bold;\">&#8594; Open Content Queue</a> &nbsp;|&nbsp; Carematix Automation System\n    </div>\n  </div>\n</body></html>`;\n\nreturn [{json:{subject:`&#128197; ${d.dueToday.length} post(s) to publish today (${d.today})`, body:html}}];",
+        "mode": "runOnceForAllItems"
+      },
+      "id": "wfc-005",
+      "name": "Build Posting Checklist Email",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1040,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "sendTo": "admin@carematix.com",
+        "subject": "={{ $json.subject }}",
+        "emailType": "html",
+        "message": "={{ $json.body }}",
+        "options": {}
+      },
+      "id": "wfc-006",
+      "name": "Email \u2014 Daily Posting Checklist",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        1300,
+        180
+      ],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "gmail_cred",
+          "name": "Gmail OAuth2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "id": "mu1",
+              "leftValue": "={{ $json.hasMissing }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "wfc-007",
+      "name": "IF \u2014 Missing URLs?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        780,
+        540
+      ]
+    },
+    {
+      "parameters": {
+        "sendTo": "admin@carematix.com",
+        "subject": "=&#9888;&#65039; {{ $json.missingUrl.length }} posted row(s) missing live URLs",
+        "emailType": "html",
+        "message": "=<!DOCTYPE html><html><body style=\"font-family:Arial,sans-serif;background:#f4f4f7;margin:0;padding:24px;\"><div style=\"max-width:620px;margin:0 auto;background:#fff;border-radius:10px;border:1px solid #e0e0e0;overflow:hidden;\"><div style=\"background:#c47000;padding:18px 24px;\"><h2 style=\"color:#fff;margin:0;font-size:16px;\">&#128276; Missing Live URLs — Action Required</h2></div><div style=\"padding:20px 24px;\"><p style=\"font-size:13px;color:#555;margin:0 0 14px 0;\">These rows are marked <code>POSTED_MANUAL</code> but have no live post URLs logged. Please paste the URLs into the sheet.</p><ul style=\"font-size:13px;color:#333;line-height:2;padding-left:18px;\">{{ $json.missingUrl.map(r=>'<li><strong>'+r['Row ID']+'</strong> &mdash; '+(r['Product Education']||r['Theme']||'')).join('') }}</ul><div style=\"margin-top:16px;\"><a href=\"https://docs.google.com/spreadsheets/d/1djoz4p-YyJ4Pu43-f9dUjWu4VhY6BCt-uUVMVVdK620/edit\" style=\"color:#1d1c84;font-weight:bold;\">&#8594; Open Content Queue</a></div></div><div style=\"padding:12px 24px;border-top:1px solid #e0e0e0;font-size:11px;color:#999;text-align:center;\">Carematix Automation System</div></div></body></html>",
+        "options": {}
+      },
+      "id": "wfc-008",
+      "name": "Email \u2014 URL Reminder",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        1040,
+        540
+      ],
+      "credentials": {
+        "gmail_cred": {
+          "id": "gmail_cred",
+          "name": "Gmail"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1djoz4p-YyJ4Pu43-f9dUjWu4VhY6BCt-uUVMVVdK620",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Run Log",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Run ID": "=WFC-{{ Date.now() }}",
+            "Workflow Name": "Workflow C \u2014 Manual Publish Checklist",
+            "Started At": "={{ $execution.startedAt }}",
+            "Finished At": "={{ new Date().toISOString() }}",
+            "Success Count": "={{ $('Classify Due Rows').first().json.dueToday.length }}",
+            "Failure Count": "=0",
+            "Notes": "=Due today: {{ $('Classify Due Rows').first().json.dueToday.length }} | Overdue: {{ $('Classify Due Rows').first().json.overdue.length }} | Missing URLs: {{ $('Classify Due Rows').first().json.missingUrl.length }}"
+          },
+          "schema": []
+        },
+        "options": {}
+      },
+      "id": "wfc-009",
+      "name": "Write Run Log",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        1560,
+        360
+      ],
+      "credentials": {
+        "google_sheets_cred": {
+          "id": "google_sheets_cred",
+          "name": "Google Sheets"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "id": "wfc-000",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [0, 200]
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [[{"node": "Read Content Queue", "type": "main", "index": 0}]]
+    },
+    "Schedule \u2014 Daily 8AM": {
+      "main": [
+        [
+          {
+            "node": "Read Content Queue",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Content Queue": {
+      "main": [
+        [
+          {
+            "node": "Classify Due Rows",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Classify Due Rows": {
+      "main": [
+        [
+          {
+            "node": "IF \u2014 Posts Due Today?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "IF \u2014 Missing URLs?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF \u2014 Posts Due Today?": {
+      "main": [
+        [
+          {
+            "node": "Build Posting Checklist Email",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Write Run Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Posting Checklist Email": {
+      "main": [
+        [
+          {
+            "node": "Email \u2014 Daily Posting Checklist",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Email \u2014 Daily Posting Checklist": {
+      "main": [
+        [
+          {
+            "node": "Write Run Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF \u2014 Missing URLs?": {
+      "main": [
+        [
+          {
+            "node": "Email \u2014 URL Reminder",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Email \u2014 URL Reminder": {
+      "main": [
+        [
+          {
+            "node": "Write Run Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [
+    {
+      "name": "carematix"
+    },
+    {
+      "name": "workflow-c"
+    }
+  ],
+  "pinData": {}
+}

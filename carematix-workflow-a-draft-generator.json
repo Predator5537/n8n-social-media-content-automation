@@ -1,0 +1,1293 @@
+{
+  "name": "Carematix — Workflow A — Weekly Draft Generator",
+  "nodes": [
+    {
+      "id": "node_1",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        300
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "node_2",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        520
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 9,
+              "triggerAtMinute": 0,
+              "field": "cronExpression",
+              "expression": "0 9 * * 1"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "node_3",
+      "name": "Read Prompt Config",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        300,
+        400
+      ],
+      "parameters": {
+        "operation": "read",
+        "documentId": {
+          "__rl": true,
+          "value": "1djoz4p-YyJ4Pu43-f9dUjWu4VhY6BCt-uUVMVVdK620",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Prompt Config",
+          "mode": "name"
+        },
+        "options": {
+          "range": "A1:F2"
+        }
+      },
+      "credentials": {
+        "Google Sheets OAuth2": {
+          "id": "google_sheets_cred",
+          "name": "Google Sheets OAuth2"
+        }
+      }
+    },
+    {
+      "id": "node_4",
+      "name": "Set Config Variables",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        560,
+        400
+      ],
+      "parameters": {
+        "jsCode": "\nconst row = $input.all()[0]?.json || {};\nconst cfg = {\n  gemini_model: row['Gemini Model'] || 'gemini-2.0-flash',\n  openrouter_model: row['OpenRouter Fallback Model'] || 'google/gemini-2.0-flash-001',\n  temperature: parseFloat(row['Temperature']) || 0.6,\n  linkedin_word_range: row['LinkedIn Word Range'] || '150-250',\n  facebook_word_range: row['Facebook Word Range'] || '80-120',\n  instagram_caption_length: row['Instagram Caption Length'] || '40-60',\n  run_started_at: new Date().toISOString()\n};\nconst ts = new Date(cfg.run_started_at);\ncfg.run_id = 'RUN-' + ts.getFullYear() +\n  String(ts.getMonth()+1).padStart(2,'0') +\n  String(ts.getDate()).padStart(2,'0') + '-' +\n  String(ts.getHours()).padStart(2,'0') +\n  String(ts.getMinutes()).padStart(2,'0');\nreturn [{json: cfg}];\n",
+        "mode": "runOnceForAllItems"
+      }
+    },
+    {
+      "id": "node_5",
+      "name": "Read Content Queue",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        820,
+        400
+      ],
+      "parameters": {
+        "operation": "read",
+        "documentId": {
+          "__rl": true,
+          "value": "1djoz4p-YyJ4Pu43-f9dUjWu4VhY6BCt-uUVMVVdK620",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Content Queue",
+          "mode": "name"
+        }
+      },
+      "credentials": {
+        "Google Sheets OAuth2": {
+          "id": "google_sheets_cred",
+          "name": "Google Sheets OAuth2"
+        }
+      }
+    },
+    {
+      "id": "node_6",
+      "name": "Filter Eligible Rows",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1080,
+        400
+      ],
+      "parameters": {
+        "jsCode": "\nconst now = new Date();\nconst in35 = new Date(now.getTime() + 35*24*60*60*1000);\nconst config = $('Set Config Variables').first().json;\nconst rows = $input.all().filter(item => {\n  const raw = (item.json['Status'] || '').toString().trim().toUpperCase().replace(/_/g, '');\n  if (raw !== 'BRIEFREADY') return false;\n  const pd = item.json['Publish Date'];\n  if (!pd) return false;\n  const d = new Date(pd);\n  return d >= now && d <= in35;\n});\nif (rows.length === 0) {\n  return [{json: { _no_rows: true, ...config }}];\n}\nreturn rows.map(r => ({json: { ...r.json, _no_rows: false, _config: config }}));\n",
+        "mode": "runOnceForAllItems"
+      }
+    },
+    {
+      "id": "node_7",
+      "name": "IF No Eligible Rows",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1340,
+        400
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "combinator": "and"
+          },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $json._no_rows }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "node_8",
+      "name": "Run Log — No Rows",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        1620,
+        240
+      ],
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1djoz4p-YyJ4Pu43-f9dUjWu4VhY6BCt-uUVMVVdK620",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Run Log",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Run ID": "={{ $json.run_id }}",
+            "Workflow Name": "Workflow A — Draft Generator",
+            "Started At": "={{ $json.run_started_at }}",
+            "Finished At": "={{ new Date().toISOString() }}",
+            "Success Count": "0",
+            "Failure Count": "0",
+            "Notes": "No eligible rows found — 0 rows processed"
+          }
+        }
+      },
+      "credentials": {
+        "Google Sheets OAuth2": {
+          "id": "google_sheets_cred",
+          "name": "Google Sheets OAuth2"
+        }
+      }
+    },
+    {
+      "id": "node_9",
+      "name": "Init Counters",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1620,
+        520
+      ],
+      "parameters": {
+        "jsCode": "\nconst staticData = $getWorkflowStaticData('global');\nstaticData.success_count = 0;\nstaticData.failure_count = 0;\nstaticData.failed_row_ids = [];\nreturn $input.all();\n",
+        "mode": "runOnceForAllItems"
+      }
+    },
+    {
+      "id": "node_10",
+      "name": "Loop Over Items",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        1880,
+        520
+      ],
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      }
+    },
+    {
+      "id": "node_11",
+      "name": "Validate Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2140,
+        520
+      ],
+      "parameters": {
+        "jsCode": "\nconst row = $json;\nconst required = ['Product Education','Content Pillar','Objective','Audience'];\nconst missing = required.filter(f => !row[f] || String(row[f]).trim() === '');\nif (missing.length > 0) {\n  return {json: {...row, _valid: false, _missing: missing.join(', ')}};\n}\nreturn {json: {...row, _valid: true}};\n",
+        "mode": "runOnceForEachItem"
+      }
+    },
+    {
+      "id": "node_12",
+      "name": "IF Valid Input",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        2400,
+        520
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "combinator": "and"
+          },
+          "conditions": [
+            {
+              "id": "v1",
+              "leftValue": "={{ $json._valid }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "node_13",
+      "name": "Update Missing Input",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        2660,
+        720
+      ],
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "1djoz4p-YyJ4Pu43-f9dUjWu4VhY6BCt-uUVMVVdK620",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Content Queue",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Row ID": "={{ $json[\"Row ID\"] }}",
+            "Status": "FAILEDGENERATION",
+            "Error Code": "MISSINGINPUT",
+            "Last Updated At": "={{ new Date().toISOString() }}",
+            "Retry Count": "={{ (parseInt($json[\"Retry Count\"]) || 0) + 1 }}"
+          },
+          "matchingColumns": [
+            "Row ID"
+          ]
+        }
+      },
+      "credentials": {
+        "Google Sheets OAuth2": {
+          "id": "google_sheets_cred",
+          "name": "Google Sheets OAuth2"
+        }
+      }
+    },
+    {
+      "id": "node_14",
+      "name": "Track Failure — Missing",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2920,
+        720
+      ],
+      "parameters": {
+        "jsCode": "\nconst s = $getWorkflowStaticData('global');\ns.failure_count = (s.failure_count || 0) + 1;\ns.failed_row_ids = s.failed_row_ids || [];\ns.failed_row_ids.push($json['Row ID'] || 'unknown');\nreturn {json: $json};\n",
+        "mode": "runOnceForEachItem"
+      }
+    },
+    {
+      "id": "node_15",
+      "name": "Mark In Progress",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        2660,
+        400
+      ],
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "1djoz4p-YyJ4Pu43-f9dUjWu4VhY6BCt-uUVMVVdK620",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Content Queue",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Row ID": "={{ $json[\"Row ID\"] }}",
+            "Status": "DRAFTGENERATING",
+            "Last Updated At": "={{ new Date().toISOString() }}"
+          },
+          "matchingColumns": [
+            "Row ID"
+          ]
+        }
+      },
+      "credentials": {
+        "Google Sheets OAuth2": {
+          "id": "google_sheets_cred",
+          "name": "Google Sheets OAuth2"
+        }
+      }
+    },
+    {
+      "id": "node_16",
+      "name": "Assemble Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2920,
+        400
+      ],
+      "parameters": {
+        "jsCode": "\nconst row = $json;\nconst cfg = row._config || $('Set Config Variables').first().json;\nconst prompt = `You are a social media content writer for Carematix, a healthcare technology company.\nCore message: Scale care with data, not staff.\nTone: Clear, confident, human, data-informed.\nBrand personality: Trustworthy, practical, forward-thinking, accessible.\nKey differentiators:\n- Cellular-First: No app, no Bluetooth, no home internet required\n- FDA-cleared device manufacturer, not importer or reseller\n- Scale Without Staff: Manage 1000 patients without adding 10 FTEs\n- Reimbursement-aligned: RPM 99453/99454, APCM G0557/G0558\n- Works where others fail: rural, elderly, low-tech, limited connectivity environments\n\nNEVER use these phrases in any output: improving patient engagement, revolutionary, game-changer, best-in-class, industry-leading, generic RPM definitions, feature-heavy posts without outcomes.\nNEVER make unsupported clinical claims.\nNEVER mention competitors (ThoroughCare, Prevounce, Tenovi) directly.\nNEVER give patient-specific medical advice.\nALWAYS use active voice.\nALWAYS be direct and get to the point in the first sentence.\nALWAYS tie features to a real outcome or business impact.\n\nLinkedIn: ${cfg.linkedin_word_range} words, professional B2B tone.\nRequired LinkedIn hashtags: #RPM #APCM #RemotePatientMonitoring #CareManagement #HealthcareLeaders\n\nFacebook: ${cfg.facebook_word_range} words, simple and human tone.\nRequired Facebook hashtags: #HeartHealth #DiabetesAwareness #RPM #Carematix\n\nInstagram: ${cfg.instagram_caption_length} words, short and punchy.\nRequired Instagram hashtags: #RPM #Carematix #RemotePatientMonitoring #HealthTech #ChronicCare\n\nAPPROVED SAMPLE POSTS (style reference only — do not copy):\nLinkedIn example 1: Care plans are important. But without real patient data, they are still reactive. RPM turns care management into something continuous and actionable.\nLinkedIn example 2: RPM does not fail because of technology. It fails because patients cannot use it. That is why connectivity has to be invisible.\nInstagram example: Data is only the first step. What matters is what happens next. RPM should drive action — not just dashboards.\n\nNow write content for the following row:\nProduct Education: ${row['Product Education']}\nContent Pillar: ${row['Content Pillar']}\nObjective: ${row['Objective']}\nAudience: ${row['Audience']}\nSuggested CTA: ${row['CTA']}\n\nReturn your response in this EXACT JSON format with no text outside the JSON block:\n{\n  \"linkedin_draft\": \"...\",\n  \"facebook_draft\": \"...\",\n  \"instagram_caption\": \"...\",\n  \"image_brief\": \"Brief description of what the Canva visual should show for this post\",\n  \"suggested_cta\": \"...\"\n}`;\nreturn {json: {...row, _prompt: prompt, _temperature: cfg.temperature, _gemini_model: cfg.gemini_model, _openrouter_model: cfg.openrouter_model}};\n",
+        "mode": "runOnceForEachItem"
+      }
+    },
+    {
+      "id": "node_20",
+      "name": "Call OpenRouter",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3960,
+        600
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://openrouter.ai/api/v1/chat/completions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: $json._openrouter_model, messages: [{ role: \"user\", content: $json._prompt }], temperature: $json._temperature }) }}",
+        "options": {
+          "timeout": 30000,
+          "allowUnauthorizedCerts": false,
+          "response": {
+            "response": {
+              "fullResponse": true
+            }
+          }
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "openrouter_cred",
+          "name": "OpenRouter API"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "id": "node_21",
+      "name": "Check OpenRouter Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4220,
+        600
+      ],
+      "parameters": {
+        "jsCode": "\nconst resp = $json;\nlet success = false;\nlet aiText = '';\ntry {\n  // n8n wraps predefined-credential responses inside resp.body\n  const data = resp.body || resp;\n  const choices = data.choices || data.data?.choices;\n  if (choices && choices[0]?.message?.content) {\n    aiText = choices[0].message.content;\n    success = true;\n  }\n} catch(e) {}\nconst prev = $('Assemble Prompt').first().json;\nreturn {json: {...prev, _openrouter_success: success, _ai_text: aiText, _raw_openrouter: JSON.stringify(resp).substring(0,2000)}};\n",
+        "mode": "runOnceForEachItem"
+      }
+    },
+    {
+      "id": "node_22",
+      "name": "IF OpenRouter OK",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        4480,
+        600
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "combinator": "and"
+          },
+          "conditions": [
+            {
+              "id": "o1",
+              "leftValue": "={{ $json._openrouter_success }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "node_23",
+      "name": "Handle API Failure",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4740,
+        780
+      ],
+      "parameters": {
+        "jsCode": "\nconst row = $json;\nreturn {json: {\n  'Row ID': row['Row ID'],\n  'Status': 'FAILEDGENERATION',\n  'Error Code': 'APIFAILURE',\n  'Review Notes': 'AI call failed — no response. Gemini: ' + (row._raw_gemini || 'N/A').substring(0,500) + ' | OpenRouter: ' + (row._raw_openrouter || 'N/A').substring(0,500),\n  'Last Updated At': new Date().toISOString(),\n  'Retry Count': (parseInt(row['Retry Count']) || 0) + 1,\n  _original: row\n}};\n",
+        "mode": "runOnceForEachItem"
+      }
+    },
+    {
+      "id": "node_24",
+      "name": "Update API Failure",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        5000,
+        780
+      ],
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "1djoz4p-YyJ4Pu43-f9dUjWu4VhY6BCt-uUVMVVdK620",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Content Queue",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Row ID": "={{ $json[\"Row ID\"] }}",
+            "Status": "={{ $json.Status }}",
+            "Error Code": "={{ $json[\"Error Code\"] }}",
+            "Review Notes": "={{ $json[\"Review Notes\"] }}",
+            "Last Updated At": "={{ $json[\"Last Updated At\"] }}",
+            "Retry Count": "={{ $json[\"Retry Count\"] }}"
+          },
+          "matchingColumns": [
+            "Row ID"
+          ]
+        }
+      },
+      "credentials": {
+        "Google Sheets OAuth2": {
+          "id": "google_sheets_cred",
+          "name": "Google Sheets OAuth2"
+        }
+      }
+    },
+    {
+      "id": "node_25",
+      "name": "Track Failure — API",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5260,
+        780
+      ],
+      "parameters": {
+        "jsCode": "\nconst s = $getWorkflowStaticData('global');\ns.failure_count = (s.failure_count || 0) + 1;\ns.failed_row_ids = s.failed_row_ids || [];\ns.failed_row_ids.push($json['Row ID'] || $json._original?.['Row ID'] || 'unknown');\nreturn {json: $json};\n",
+        "mode": "runOnceForEachItem"
+      }
+    },
+    {
+      "id": "node_26",
+      "name": "Parse Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4220,
+        300
+      ],
+      "parameters": {
+        "jsCode": "\nconst row = $json;\nconst rawText = row._ai_text || '';\n// Strip markdown code fences\nlet cleaned = rawText.replace(/```json\\s*/gi, '').replace(/```\\s*/gi, '').trim();\n// Extract first JSON block\nconst jsonMatch = cleaned.match(/\\{[\\s\\S]*\\}/);\nif (!jsonMatch) {\n  return {json: {...row, _parse_ok: false, _raw_ai: rawText.substring(0,2000), _parse_error: 'No JSON block found'}};\n}\nlet parsed;\ntry {\n  parsed = JSON.parse(jsonMatch[0]);\n} catch(e) {\n  return {json: {...row, _parse_ok: false, _raw_ai: rawText.substring(0,2000), _parse_error: 'JSON.parse failed: ' + e.message}};\n}\nconst required = ['linkedin_draft','facebook_draft','instagram_caption','image_brief','suggested_cta'];\nconst missing = required.filter(k => !parsed[k] || parsed[k].toString().trim() === '');\nif (missing.length > 0) {\n  return {json: {...row, _parse_ok: false, _raw_ai: rawText.substring(0,2000), _parse_error: 'Missing fields: ' + missing.join(', ')}};\n}\nreturn {json: {...row, _parsed: parsed, _parse_ok: true, _raw_ai: rawText.substring(0,2000)}};\n",
+        "mode": "runOnceForEachItem"
+      }
+    },
+    {
+      "id": "node_27",
+      "name": "IF Parse OK",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        4480,
+        300
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "combinator": "and"
+          },
+          "conditions": [
+            {
+              "id": "p1",
+              "leftValue": "={{ $json._parse_ok }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "node_28",
+      "name": "Write Drafts",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        4740,
+        200
+      ],
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "1djoz4p-YyJ4Pu43-f9dUjWu4VhY6BCt-uUVMVVdK620",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Content Queue",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Row ID": "={{ $json[\"Row ID\"] }}",
+            "LinkedIn Draft": "={{ $json._parsed.linkedin_draft }}",
+            "Facebook Draft": "={{ $json._parsed.facebook_draft }}",
+            "Instagram Caption": "={{ $json._parsed.instagram_caption }}",
+            "Image Brief": "={{ $json._parsed.image_brief }}",
+            "CTA": "={{ $json._parsed.suggested_cta }}",
+            "Status": "DRAFTREADY",
+            "Last Updated At": "={{ new Date().toISOString() }}"
+          },
+          "matchingColumns": [
+            "Row ID"
+          ]
+        }
+      },
+      "credentials": {
+        "Google Sheets OAuth2": {
+          "id": "google_sheets_cred",
+          "name": "Google Sheets OAuth2"
+        }
+      }
+    },
+    {
+      "id": "node_29",
+      "name": "Track Success",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5000,
+        200
+      ],
+      "parameters": {
+        "jsCode": "\nconst s = $getWorkflowStaticData('global');\ns.success_count = (s.success_count || 0) + 1;\nreturn {json: $json};\n",
+        "mode": "runOnceForEachItem"
+      }
+    },
+    {
+      "id": "node_30",
+      "name": "Handle Parse Failure",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4740,
+        480
+      ],
+      "parameters": {
+        "jsCode": "\nconst row = $json;\nreturn {json: {\n  'Row ID': row['Row ID'],\n  'Status': 'FAILEDGENERATION',\n  'Error Code': 'PARSEFAILURE',\n  'Review Notes': (row._raw_ai || row._ai_text || 'No AI response text').substring(0,1500),\n  'Last Updated At': new Date().toISOString(),\n  'Retry Count': (parseInt(row['Retry Count']) || 0) + 1,\n  _original: row\n}};\n",
+        "mode": "runOnceForEachItem"
+      }
+    },
+    {
+      "id": "node_31",
+      "name": "Update Parse Failure",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        5000,
+        480
+      ],
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "1djoz4p-YyJ4Pu43-f9dUjWu4VhY6BCt-uUVMVVdK620",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Content Queue",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Row ID": "={{ $json[\"Row ID\"] }}",
+            "Status": "={{ $json.Status }}",
+            "Error Code": "={{ $json[\"Error Code\"] }}",
+            "Review Notes": "={{ $json[\"Review Notes\"] }}",
+            "Last Updated At": "={{ $json[\"Last Updated At\"] }}",
+            "Retry Count": "={{ $json[\"Retry Count\"] }}"
+          },
+          "matchingColumns": [
+            "Row ID"
+          ]
+        }
+      },
+      "credentials": {
+        "Google Sheets OAuth2": {
+          "id": "google_sheets_cred",
+          "name": "Google Sheets OAuth2"
+        }
+      }
+    },
+    {
+      "id": "node_32",
+      "name": "Track Failure — Parse",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5260,
+        480
+      ],
+      "parameters": {
+        "jsCode": "\nconst s = $getWorkflowStaticData('global');\ns.failure_count = (s.failure_count || 0) + 1;\ns.failed_row_ids = s.failed_row_ids || [];\ns.failed_row_ids.push($json['Row ID'] || $json._original?.['Row ID'] || 'unknown');\nreturn {json: $json};\n",
+        "mode": "runOnceForEachItem"
+      }
+    },
+    {
+      "id": "node_33",
+      "name": "Prepare Run Log",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5520,
+        520
+      ],
+      "parameters": {
+        "jsCode": "\nconst s = $getWorkflowStaticData('global');\nconst cfg = $('Set Config Variables').first().json;\nconst sc = s.success_count || 0;\nconst fc = s.failure_count || 0;\nconst failed = s.failed_row_ids || [];\nconst notes = fc > 0 ? 'Failed Row IDs: ' + failed.join(', ') : 'All rows processed successfully';\nreturn [{json: {\n  'Run ID': cfg.run_id,\n  'Workflow Name': 'Workflow A — Draft Generator',\n  'Started At': cfg.run_started_at,\n  'Finished At': new Date().toISOString(),\n  'Success Count': String(sc),\n  'Failure Count': String(fc),\n  'Notes': notes\n}}];\n",
+        "mode": "runOnceForAllItems"
+      }
+    },
+    {
+      "id": "node_34",
+      "name": "Write Run Log",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        5780,
+        520
+      ],
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1djoz4p-YyJ4Pu43-f9dUjWu4VhY6BCt-uUVMVVdK620",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Run Log",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Run ID": "={{ $json[\"Run ID\"] }}",
+            "Workflow Name": "={{ $json[\"Workflow Name\"] }}",
+            "Started At": "={{ $json[\"Started At\"] }}",
+            "Finished At": "={{ $json[\"Finished At\"] }}",
+            "Success Count": "={{ $json[\"Success Count\"] }}",
+            "Failure Count": "={{ $json[\"Failure Count\"] }}",
+            "Notes": "={{ $json.Notes }}"
+          }
+        }
+      },
+      "credentials": {
+        "Google Sheets OAuth2": {
+          "id": "google_sheets_cred",
+          "name": "Google Sheets OAuth2"
+        }
+      }
+    },
+    {
+      "id": "node_35",
+      "name": "Recovery — Read Queue",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [820, 700],
+      "parameters": {
+        "operation": "read",
+        "documentId": { "__rl": true, "value": "1djoz4p-YyJ4Pu43-f9dUjWu4VhY6BCt-uUVMVVdK620", "mode": "id" },
+        "sheetName": { "__rl": true, "value": "Content Queue", "mode": "name" }
+      },
+      "credentials": { "googleSheetsOAuth2Api": { "id": "google_sheets_cred", "name": "Google Sheets OAuth2" } }
+    },
+    {
+      "id": "node_36",
+      "name": "Recovery — Filter Stuck Rows",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1080, 700],
+      "parameters": {
+        "jsCode": "\nconst now = new Date();\nconst twoHoursAgo = new Date(now.getTime() - 2 * 60 * 60 * 1000);\nconst stuck = $input.all().filter(item => {\n  const status = (item.json['Status'] || '').toString().trim().toUpperCase();\n  if (status !== 'DRAFTGENERATING') return false;\n  const lu = item.json['Last Updated At'];\n  if (!lu) return true;\n  return new Date(lu) < twoHoursAgo;\n});\nif (stuck.length === 0) {\n  return [{ json: { _recovery_needed: false } }];\n}\nreturn stuck.map(r => ({ json: { ...r.json, _recovery_needed: true } }));\n",
+        "mode": "runOnceForAllItems"
+      }
+    },
+    {
+      "id": "node_37",
+      "name": "IF Recovery Needed",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1340, 700],
+      "parameters": {
+        "conditions": {
+          "options": { "combinator": "and" },
+          "conditions": [{ "id": "r1", "leftValue": "={{ $json._recovery_needed }}", "rightValue": true, "operator": { "type": "boolean", "operation": "equals" } }]
+        }
+      }
+    },
+    {
+      "id": "node_38",
+      "name": "Recovery — Loop",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [1600, 700],
+      "parameters": { "batchSize": 1, "options": {} }
+    },
+    {
+      "id": "node_39",
+      "name": "Recovery — Reset Row",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [1860, 700],
+      "parameters": {
+        "operation": "update",
+        "documentId": { "__rl": true, "value": "1djoz4p-YyJ4Pu43-f9dUjWu4VhY6BCt-uUVMVVdK620", "mode": "id" },
+        "sheetName": { "__rl": true, "value": "Content Queue", "mode": "name" },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Row ID": "={{ $json['Row ID'] }}",
+            "Status": "BRIEFREADY",
+            "Last Updated At": "={{ new Date().toISOString() }}"
+          },
+          "matchingColumns": ["Row ID"]
+        }
+      },
+      "credentials": { "googleSheetsOAuth2Api": { "id": "google_sheets_cred", "name": "Google Sheets OAuth2" } }
+    },
+    {
+      "id": "node_40",
+      "name": "Send Run Email",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [6040, 520],
+      "parameters": {
+        "operation": "send",
+        "sendTo": "admin@carematix.com",
+        "subject": "=Workflow A Complete \u2014 {{ $json['Success Count'] }} drafts ready, {{ $json['Failure Count'] }} failed \u2014 {{ $json['Run ID'] }}",
+        "emailType": "text",
+        "message": "=Workflow A has completed its Monday run.\n\nRun ID: {{ $json['Run ID'] }}\nStarted: {{ $json['Started At'] }}\nFinished: {{ $json['Finished At'] }}\nRows processed successfully: {{ $json['Success Count'] }}\nRows failed: {{ $json['Failure Count'] }}\n\n{{ $json['Notes'] }}\n\nNext step: Open the Content Queue tab, filter Status = DRAFTREADY, and review drafts for approval.\n\n\u2014 Carematix Automation System"
+      },
+      "credentials": { "gmailOAuth2": { "id": "gmail_cred", "name": "Gmail OAuth2" } },
+      "continueOnFail": true
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Read Prompt Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Read Prompt Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Prompt Config": {
+      "main": [
+        [
+          {
+            "node": "Set Config Variables",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Config Variables": {
+      "main": [
+        [
+          {
+            "node": "Recovery \u2014 Read Queue",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Content Queue": {
+      "main": [
+        [
+          {
+            "node": "Filter Eligible Rows",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Eligible Rows": {
+      "main": [
+        [
+          {
+            "node": "IF No Eligible Rows",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF No Eligible Rows": {
+      "main": [
+        [
+          {
+            "node": "Run Log — No Rows",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Init Counters",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Init Counters": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Items": {
+      "main": [
+        [
+          {
+            "node": "Prepare Run Log",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Validate Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Input": {
+      "main": [
+        [
+          {
+            "node": "IF Valid Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Valid Input": {
+      "main": [
+        [
+          {
+            "node": "Mark In Progress",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Update Missing Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Missing Input": {
+      "main": [
+        [
+          {
+            "node": "Track Failure — Missing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Track Failure — Missing": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark In Progress": {
+      "main": [
+        [
+          {
+            "node": "Assemble Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Assemble Prompt": {
+      "main": [
+        [
+          {
+            "node": "Call OpenRouter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call OpenRouter": {
+      "main": [
+        [
+          {
+            "node": "Check OpenRouter Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check OpenRouter Response": {
+      "main": [
+        [
+          {
+            "node": "IF OpenRouter OK",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF OpenRouter OK": {
+      "main": [
+        [
+          {
+            "node": "Parse Response",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Handle API Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Handle API Failure": {
+      "main": [
+        [
+          {
+            "node": "Update API Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update API Failure": {
+      "main": [
+        [
+          {
+            "node": "Track Failure — API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Track Failure — API": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Response": {
+      "main": [
+        [
+          {
+            "node": "IF Parse OK",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Parse OK": {
+      "main": [
+        [
+          {
+            "node": "Write Drafts",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Handle Parse Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Write Drafts": {
+      "main": [
+        [
+          {
+            "node": "Track Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Track Success": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Handle Parse Failure": {
+      "main": [
+        [
+          {
+            "node": "Update Parse Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Parse Failure": {
+      "main": [
+        [
+          {
+            "node": "Track Failure — Parse",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Track Failure — Parse": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Run Log": {
+      "main": [
+        [
+          {
+            "node": "Write Run Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Write Run Log": {
+      "main": [
+        [
+          {
+            "node": "Send Run Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Recovery \u2014 Read Queue": {
+      "main": [
+        [
+          {
+            "node": "Recovery \u2014 Filter Stuck Rows",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Recovery \u2014 Filter Stuck Rows": {
+      "main": [
+        [
+          {
+            "node": "IF Recovery Needed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Recovery Needed": {
+      "main": [
+        [
+          {
+            "node": "Recovery \u2014 Loop",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Read Content Queue",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Recovery \u2014 Loop": {
+      "main": [
+        [
+          {
+            "node": "Read Content Queue",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Recovery \u2014 Reset Row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Recovery \u2014 Reset Row": {
+      "main": [
+        [
+          {
+            "node": "Recovery \u2014 Loop",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "timezone": "America/New_York"
+  },
+  "versionId": "1",
+  "meta": {
+    "instanceId": "carematix-social-media",
+    "templateCredsSetupCompleted": true
+  },
+  "tags": [
+    {
+      "name": "Carematix"
+    },
+    {
+      "name": "Social Media"
+    },
+    {
+      "name": "Content Generation"
+    }
+  ]
+}
